@@ -10,9 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.lifecycleScope
 import com.example.ioslauncheronandroid.data.LauncherSettings
+import com.example.ioslauncheronandroid.data.PhotoStore
 import com.example.ioslauncheronandroid.ui.widgets.LauncherController
 import com.example.ioslauncheronandroid.ui.widgets.LocalController
-import com.example.ioslauncheronandroid.ui.widgets.PhotoAccess
 import com.example.ioslauncheronandroid.wallpaper.WallpaperStore
 import kotlinx.coroutines.launch
 import android.content.Context
@@ -53,17 +53,21 @@ class MainActivity : ComponentActivity(), LauncherController {
     private var pendingToLibrary = false
     private val wallpaperVersion = mutableIntStateOf(0)
     private val isDefaultHome = mutableStateOf(true)
-    private val photoPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { com.example.ioslauncheronandroid.ui.widgets.PhotoAccess.version.intValue++ }
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { com.example.ioslauncheronandroid.weather.WeatherState.version.intValue++ }
     private val calendarPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { com.example.ioslauncheronandroid.ui.widgets.CalendarAccess.version.intValue++ }
     private val roleRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { refreshDefaultHome() }
     private var lastWallpaperId = -1
     private var ownBackdrop = false
     private val tilt by lazy { TiltSensor(this) }
-    private val mediaPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { openAllFilesAccess() }
 
     private val photoPicker = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(30)) { uris ->
         if (uris.isNotEmpty()) lifecycleScope.launch { WallpaperStore.add(uris) }
+    }
+
+    private val photosWidgetPicker = registerForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(30)
+    ) { uris ->
+        if (uris.isNotEmpty()) PhotoStore.add(uris)
     }
 
     private companion object {
@@ -84,6 +88,7 @@ class MainActivity : ComponentActivity(), LauncherController {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PhotoStore.init(this)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -227,7 +232,11 @@ class MainActivity : ComponentActivity(), LauncherController {
 
     override fun requestLocationAccess() { locationPermission.launch(android.Manifest.permission.ACCESS_COARSE_LOCATION) }
 
-    override fun requestPhotoAccess() { photoPermission.launch(PhotoAccess.permission) }
+    override fun requestPhotoAccess() {
+        photosWidgetPicker.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        )
+    }
 
     override fun requestDefaultLauncher() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -241,25 +250,7 @@ class MainActivity : ComponentActivity(), LauncherController {
     }
 
     override fun requestWallpaperAccess() {
-        if (checkSelfPermission(PhotoAccess.permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            mediaPermission.launch(PhotoAccess.permission)
-        } else {
-            openAllFilesAccess()
-        }
-    }
-
-    private fun openAllFilesAccess() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            wallpaperVersion.intValue++
-            return
-        }
-        if (!android.os.Environment.isExternalStorageManager()) {
-            runCatching {
-                startActivity(
-                    Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, android.net.Uri.parse("package:$packageName")),
-                )
-            }
-        }
+        pickWallpapers()
     }
 
     override fun onStop() {

@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.ioslauncheronandroid.data.LauncherSettings
+import com.example.ioslauncheronandroid.data.PhotoStore
 import com.example.ioslauncheronandroid.data.WidgetCategory
 import com.example.ioslauncheronandroid.music.MusicState
 import com.example.ioslauncheronandroid.ui.glass.GlassButton
@@ -105,14 +106,6 @@ enum class Builtin(val emoji: String, val title: String, val description: String
 }
 
 private val CardShape = RoundedCornerShape(28.dp)
-
-object PhotoAccess {
-    val version = mutableIntStateOf(0)
-
-    val permission: String
-        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) android.Manifest.permission.READ_MEDIA_IMAGES
-        else android.Manifest.permission.READ_EXTERNAL_STORAGE
-}
 
 @Composable
 internal fun AnalogClockCard() {
@@ -168,7 +161,7 @@ private class PhotoItem(val uri: android.net.Uri, val image: ImageBitmap, val ta
 internal fun PhotosCard(modifier: Modifier = Modifier.fillMaxWidth().height(250.dp), compact: Boolean = false) {
     val context = LocalContext.current
     val controller = LocalController.current
-    val photos by produceState<List<PhotoItem>>(emptyList(), PhotoAccess.version.intValue) { value = loadRecentPhotos(context) }
+    val photos by produceState<List<PhotoItem>>(emptyList(), PhotoStore.version.intValue) { value = loadRecentPhotos(context) }
     Box(
         modifier
             .glass(CardShape, Color.Transparent, elevation = 10)
@@ -183,8 +176,8 @@ internal fun PhotosCard(modifier: Modifier = Modifier.fillMaxWidth().height(250.
             ) {
                 Text("🖼", fontSize = if (compact) 28.sp else 34.sp)
                 Text(if (compact) "Photos" else "Show your photos here", color = Color.White, fontSize = if (compact) 15.sp else 17.sp, fontWeight = FontWeight.SemiBold)
-                if (!compact) Text("Allow photo access and your latest pictures will appear — swipe through them right on the page.", color = Color.White.copy(0.65f), fontSize = 13.sp)
-                GlassButton(if (compact) "Allow" else "Allow photo access", strong = true) { controller.requestPhotoAccess() }
+                if (!compact) Text("Choose photos to show them here — swipe through your selected pictures.", color = Color.White.copy(0.65f), fontSize = 13.sp)
+                GlassButton(if (compact) "Choose" else "Choose photos", strong = true) { controller.requestPhotoAccess() }
             }
         } else {
             val pager = androidx.compose.foundation.pager.rememberPagerState { photos.size }
@@ -251,32 +244,18 @@ internal fun PhotosCard(modifier: Modifier = Modifier.fillMaxWidth().height(250.
     }
 }
 
-private suspend fun loadRecentPhotos(context: Context): List<PhotoItem> = withContext(Dispatchers.IO) {
-    if (context.checkSelfPermission(PhotoAccess.permission) != PackageManager.PERMISSION_GRANTED) return@withContext emptyList()
-    val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-    val modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-    val pathColumn = if (modern) MediaStore.Images.Media.RELATIVE_PATH else MediaStore.Images.Media.DATA
-    val cameraPattern = if (modern) "DCIM/%" else "%/DCIM/%"
-    val rows = mutableListOf<Pair<android.net.Uri, Long>>()
-    runCatching {
-        context.contentResolver.query(
-            collection,
-            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED),
-            "$pathColumn LIKE ? AND $pathColumn NOT LIKE ? AND ${MediaStore.Images.Media.DISPLAY_NAME} NOT LIKE ? AND ${MediaStore.Images.Media.DISPLAY_NAME} NOT LIKE ?",
-            arrayOf(cameraPattern, "%Screenshot%", "Screenshot%", "%screenshot%"),
-            "${MediaStore.Images.Media.DATE_ADDED} DESC",
-        )?.use { c ->
-            while (c.moveToNext() && rows.size < 15) {
-                val taken = c.getLong(1).takeIf { it > 0 } ?: (c.getLong(2) * 1000)
-                rows += ContentUris.withAppendedId(collection, c.getLong(0)) to taken
-            }
+private suspend fun loadRecentPhotos(context: Context): List<PhotoItem> =
+    withContext(Dispatchers.IO) {
+        PhotoStore.getUris().mapNotNull { uri ->
+            runCatching {
+                PhotoItem(
+                    uri,
+                    decodeSampled(context, uri, 1080, 720).asImageBitmap(),
+                    System.currentTimeMillis()
+                )
+            }.getOrNull()
         }
     }
-    rows.mapNotNull { (uri, taken) ->
-        runCatching { PhotoItem(uri, decodeSampled(context, uri, 1080, 720).asImageBitmap(), taken) }.getOrNull()
-    }
-}
-
 private fun decodeSampled(context: Context, uri: android.net.Uri, maxW: Int, maxH: Int): android.graphics.Bitmap {
     val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
