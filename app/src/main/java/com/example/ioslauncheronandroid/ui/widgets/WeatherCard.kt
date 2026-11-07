@@ -56,7 +56,6 @@ internal fun WeatherCard(modifier: Modifier = Modifier.fillMaxWidth(), compact: 
     when (val s = WeatherState.status) {
         is WeatherStatus.Ready -> WeatherContent(s.weather, modifier, compact)
         WeatherStatus.Loading -> Message("Loading…", null, null, {}, modifier, compact)
-        WeatherStatus.NeedsLocation -> Message("Weather", "Allow approximate location to see the weather where you are.", "Allow location", { controller.requestLocationAccess() }, modifier, compact)
         is WeatherStatus.Failed -> Message("Weather", s.message, "Try again", { WeatherState.version.intValue++ }, modifier, compact)
     }
 }

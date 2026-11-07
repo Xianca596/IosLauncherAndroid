@@ -53,8 +53,6 @@ class MainActivity : ComponentActivity(), LauncherController {
     private var pendingToLibrary = false
     private val wallpaperVersion = mutableIntStateOf(0)
     private val isDefaultHome = mutableStateOf(true)
-    private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { com.example.ioslauncheronandroid.weather.WeatherState.version.intValue++ }
-    private val calendarPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { com.example.ioslauncheronandroid.ui.widgets.CalendarAccess.version.intValue++ }
     private val roleRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { refreshDefaultHome() }
     private var lastWallpaperId = -1
     private var ownBackdrop = false
@@ -228,9 +226,9 @@ class MainActivity : ComponentActivity(), LauncherController {
 
     private fun refreshDefaultHome() { isDefaultHome.value = computeIsDefaultHome() }
 
-    override fun requestCalendarAccess() { calendarPermission.launch(android.Manifest.permission.READ_CALENDAR) }
+    override fun requestCalendarAccess() {}
 
-    override fun requestLocationAccess() { locationPermission.launch(android.Manifest.permission.ACCESS_COARSE_LOCATION) }
+    override fun requestLocationAccess() {}
 
     override fun requestPhotoAccess() {
         photosWidgetPicker.launch(

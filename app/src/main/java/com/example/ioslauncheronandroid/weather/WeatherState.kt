@@ -1,26 +1,17 @@
 package com.example.ioslauncheronandroid.weather
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.location.Geocoder
-import android.location.Location
-import android.location.LocationManager
-import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
-import kotlin.coroutines.resume
 
 data class HourForecast(val hour: Int, val tempC: Double, val code: Int, val isDay: Boolean)
 
@@ -37,7 +28,6 @@ data class Weather(
 
 sealed interface WeatherStatus {
     data object Loading : WeatherStatus
-    data object NeedsLocation : WeatherStatus
     data class Failed(val message: String) : WeatherStatus
     data class Ready(val weather: Weather) : WeatherStatus
 }
@@ -48,65 +38,26 @@ object WeatherState {
 
     val version = mutableIntStateOf(0)
 
-    private const val MAX_AGE_MS = 30 * 60_000L
+    suspend fun refresh(context: Context, force: Boolean = false) =
+        withContext(Dispatchers.IO) {
+            val app = context.applicationContext
+            val prefs = app.getSharedPreferences("weather", Context.MODE_PRIVATE)
 
-    suspend fun refresh(context: Context, force: Boolean = false) = withContext(Dispatchers.IO) {
-        val app = context.applicationContext
-        val prefs = app.getSharedPreferences("weather", Context.MODE_PRIVATE)
-        if (status !is WeatherStatus.Ready) {
-            prefs.getString("cache", null)?.let { runCatching { WeatherParser.fromCache(it) }.getOrNull() }?.let { status = WeatherStatus.Ready(it) }
-        }
-        val cached = (status as? WeatherStatus.Ready)?.weather
-        if (!force && cached != null && System.currentTimeMillis() - cached.fetchedAt < MAX_AGE_MS) return@withContext
+            val cached = prefs.getString("cache", null)
+                ?.let {
+                    runCatching {
+                        WeatherParser.fromCache(it)
+                    }.getOrNull()
+                }
 
-        if (app.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            if (cached == null) status = WeatherStatus.NeedsLocation
-            return@withContext
-        }
-        val loc = findLocation(app)
-        if (loc == null) {
-            if (cached == null) status = WeatherStatus.Failed("Couldn't find your location")
-            return@withContext
-        }
-        runCatching {
-            val body = http(
-                "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f".format(Locale.US, loc.latitude, loc.longitude) +
-                    "&current=temperature_2m,weather_code,is_day&hourly=temperature_2m,weather_code,is_day" +
-                    "&daily=temperature_2m_max,temperature_2m_min&forecast_days=2&timezone=auto",
-            )
-            val city = cityName(app, loc) ?: cached?.city ?: "My Location"
-            val w = WeatherParser.parse(body, city, System.currentTimeMillis())
-            prefs.edit().putString("cache", WeatherParser.toCache(w)).apply()
-            status = WeatherStatus.Ready(w)
-        }.onFailure { if (cached == null) status = WeatherStatus.Failed("Weather is unavailable right now") }
-    }
-
-    @android.annotation.SuppressLint("MissingPermission")
-    private suspend fun findLocation(context: Context): Location? {
-        val lm = context.getSystemService(LocationManager::class.java) ?: return null
-        val last = lm.getProviders(true).mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
-        if (last != null) return last
-        if (Build.VERSION.SDK_INT < 30) return null
-        val provider = lm.getProviders(true).firstOrNull() ?: return null
-        return withTimeoutOrNull(8_000) {
-            suspendCancellableCoroutine { cont ->
-                runCatching { lm.getCurrentLocation(provider, null, context.mainExecutor) { cont.resume(it) } }.onFailure { cont.resume(null) }
+            if (cached != null) {
+                status = WeatherStatus.Ready(cached)
+            } else {
+                status = WeatherStatus.Failed(
+                    "Location access is disabled. Weather data is unavailable."
+                )
             }
         }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun cityName(context: Context, loc: Location): String? = runCatching {
-        Geocoder(context, Locale.getDefault()).getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()
-            ?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
-    }.getOrNull()
-
-    private fun http(url: String): String {
-        val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 8_000
-        c.readTimeout = 8_000
-        return try { c.inputStream.bufferedReader().use { it.readText() } } finally { c.disconnect() }
-    }
 }
 
 object WeatherParser {
