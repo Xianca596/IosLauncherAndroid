@@ -1,4 +1,9 @@
 package com.example.ioslauncheronandroid.ui.home
+import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -603,6 +608,23 @@ fun HomeScreen(apps: List<AppInfo>, backdrop: Backdrop?, homePressCount: Int, is
             Screen.LibraryWidgetPicker -> WidgetPicker(toLibrary = true) { screen = Screen.None }
             Screen.None -> {}
         }
+
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            Text(
+                text = "CONTROL",
+                color = Color.White,
+                modifier = Modifier
+                    .padding(18.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xE52D3545))
+                    .clickable { controlCenterOpen = true }
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+            )
+        }
+
         if (controlCenterOpen) {
             ControlCenter(onDismiss = { controlCenterOpen = false })
         }
