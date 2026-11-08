@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity(), LauncherController {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
+        applyLauncherSystemBars()
         enableWindowBlur()
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -132,6 +133,15 @@ class MainActivity : ComponentActivity(), LauncherController {
                 }
             }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyLauncherSystemBars() {
+        window.decorView.systemUiVisibility =
+            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
 
     private fun enableWindowBlur() {
@@ -201,6 +211,7 @@ class MainActivity : ComponentActivity(), LauncherController {
 
     override fun onResume() {
         super.onResume()
+        applyLauncherSystemBars()
         tilt.start()
         refreshDefaultHome()
 
