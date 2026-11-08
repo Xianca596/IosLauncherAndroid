@@ -6,6 +6,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -94,6 +98,7 @@ fun HomeScreen(apps: List<AppInfo>, backdrop: Backdrop?, homePressCount: Int, is
     val pageCount = pages.size + 2
     val pager = rememberPagerState(initialPage = 1) { pageCount }
     var screen by remember { mutableStateOf(Screen.None) }
+    var controlCenterOpen by remember { mutableStateOf(false) }
     var menuApp by remember { mutableStateOf<AppInfo?>(null) }
     var menuRect by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
@@ -336,6 +341,41 @@ fun HomeScreen(apps: List<AppInfo>, backdrop: Backdrop?, homePressCount: Int, is
         Modifier
             .fillMaxSize()
             .onSizeChanged { backdrop?.size = it }
+            .pointerInput(controlCenterOpen) {
+                if (controlCenterOpen) return@pointerInput
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (down.position.x < size.width * 0.65f ||
+                        down.position.y > 100.dp.toPx()
+                    ) return@awaitEachGesture
+
+                    val slop = awaitVerticalTouchSlopOrCancellation(down.id) { change, _ ->
+                        change.consume()
+                    }
+
+                    if (slop != null) {
+                        var lastY = slop.position.y
+                        var distance = lastY - down.position.y
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                                ?: break
+                            if (!change.pressed) break
+
+                            val currentY = change.position.y
+                            distance += currentY - lastY
+                            lastY = currentY
+
+                            if (distance > 72.dp.toPx()) {
+                                controlCenterOpen = true
+                                break
+                            }
+                            change.consume()
+                        }
+                    }
+                }
+            }
             .pointerInput(Unit) { detectTapGestures(
                     onLongPress = {
                         if (!editMode) {
@@ -564,6 +604,10 @@ fun HomeScreen(apps: List<AppInfo>, backdrop: Backdrop?, homePressCount: Int, is
             Screen.LibraryWidgetPicker -> WidgetPicker(toLibrary = true) { screen = Screen.None }
             Screen.None -> {}
         }
+        if (controlCenterOpen) {
+            ControlCenter(onDismiss = { controlCenterOpen = false })
+        }
+
     }
     }
 }
